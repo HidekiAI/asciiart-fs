@@ -1,7 +1,8 @@
-﻿open System
-open libaafs
+open System
+open Aafs
 
 [<EntryPoint>]
 let main argv =
-    Say.hello
+    Map.hello "World!"
+
     0 // return an integer exit code
