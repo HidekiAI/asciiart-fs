@@ -5,6 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="image.fs" />
     <Compile Include="libaafs.fs" />
   </ItemGroup>
 
