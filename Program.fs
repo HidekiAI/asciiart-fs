@@ -8,5 +8,4 @@ let main argv =
     let chBlock = libaafs.Map.lookup dimension block
     assert('_' = chBlock)
 
-
     0 // return an integer exit code
