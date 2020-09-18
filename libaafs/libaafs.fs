@@ -1,7 +1,7 @@
 namespace libaafs
 
 open System.Collections
-open libaafs.image
+open libaafs
 
 type BlockMap =
     { DimensionXY: int
@@ -118,13 +118,15 @@ module Map =
             | None -> ' '
 
     /// process in parallel of 4 quadrants
-    let private convertToBlocks dimension dataBlock: char[][] =
-        ()
+    let private convertToBlocks dimension (dataBlock: CellImage): char[][] =
+        dataBlock.Cells
+        // pack byte array into NxN
+        |> Array.forall  
     
     let private readImage filename dimension: libaafs.CellImage =
         image.readPng filename
         |> image.toGreyScale
-        |> image.toBlock dimension
+        |> image.toBlock dimension  // make a block of NxN
         
     let convert filename dimension: char[][] =
         readImage filename dimension
