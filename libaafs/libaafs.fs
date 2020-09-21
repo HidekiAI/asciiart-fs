@@ -30,11 +30,11 @@ open libaafs
 
 
 type BlockMap =
-    { DimensionXY: uint
+    { DimensionXY: uint32
       Map: Generic.IDictionary<byte [] [], char> }
 
 type private CharBlock =
-    { WidthAndHeight: uint // it's square, so all we need is one
+    { WidthAndHeight: uint32 // it's square, so all we need is one
       Data: byte [] [] // NxN (square) dimension block, where it's [Y][X]
       Char: char }
 

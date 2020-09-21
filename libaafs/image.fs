@@ -121,7 +121,7 @@ module image =
         { Width = rawImage.Width
           Height = rawImage.Height
           Pixels =
-              let arraySize = uint rawImage.Data.Length - 1u
+              let arraySize = uint32 rawImage.Data.Length - 1u
               for pxy in 0u .. arraySize do
                   pixelArray.[int pxy] <- fromRGBA33 rawImage.Data.[int pxy]
               pixelArray }
@@ -136,9 +136,9 @@ module image =
         twoDArray
 
     let private copyRectToCell dimension pX pY stride (vector: byte []): Cell =
-        if (uint
+        if (uint32
                 (((pY + (dimension - 1u)) * stride)
-                 + (pX + (dimension - 1u)))) > (uint vector.Length) then
+                 + (pX + (dimension - 1u)))) > (uint32 vector.Length) then
             failwith "Invalid (X,Y) coordinate, will lead to index outside the buffer pool"
 
         let retCell =
@@ -155,7 +155,7 @@ module image =
                   //      //                let px = int ((cx * cellDimension) + pxRelative)
                   //      //                let py =
                   //      //                    int ((cellY * cellDimension) + pyRelative) // py / imageWidth = scanline
-                  //      //                let pixelIndex = int ((uint py * stride) + uint px)
+                  //      //                let pixelIndex = int ((uint32 py * stride) + uint32 px)
                   //      //                vector.[pixelIndex] |]
                   //      //        blockRow |]
                   //      //block
@@ -292,10 +292,10 @@ module image =
         | (x, _) when (int x) < 0 -> failwith (sprintf "Value (%i, %i) passed is negative" cX cY)
         | (x, y) when (uint32 x) < cellImage.CellWidth
                       && (uint32 y) < cellImage.CellHeight -> Some cellImage.Cells.[int x].[int y]
-        | (_, y) when (uint y) > cellImage.CellHeight ->
+        | (_, y) when (uint32 y) > cellImage.CellHeight ->
             printfn "(%i, %i) - Y position is out of range (want less than %i)" cX cY cellImage.CellHeight
             None
-        | (x, _) when (uint x) > cellImage.CellWidth ->
+        | (x, _) when (uint32 x) > cellImage.CellWidth ->
             printfn "(%i, %i) - X position is out of range (want less than %i)" cX cY cellImage.CellWidth
             None
         | (_, _) -> failwith "Unhandled exception!"
