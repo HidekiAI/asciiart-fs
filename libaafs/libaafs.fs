@@ -182,16 +182,6 @@ module CharMap =
     let private blockMaps = map4x4
 
     let private lookup dimension (byteArray: byte [] []) =
-#if DEBUG
-        //printfn
-        //    "Looking up (dimension: %A) %s"
-        //    dimension
-        //    (byteArray
-        //     |> Array.fold (fun str1 row ->
-        //         str1
-        //         + (row
-        //            |> Array.fold (fun str2 col -> str2 + sprintf "%02X " col) "") + "\n") "\n")
-#endif
         blockMaps
         |> Seq.where (fun block -> block.DimensionXY = dimension)
         |> Seq.tryPick (fun block ->
@@ -199,9 +189,6 @@ module CharMap =
             | true ->
                 match block.Map.TryGetValue byteArray with
                 | true, chVal ->
-#if DEBUG
-                    //printfn "\tFound: %A" chVal
-#endif
                     Some <| chVal
                 | false, _ -> None
             | false -> None)
@@ -254,10 +241,10 @@ module CharMap =
 
     let dumpCharMap (sb: StringBuilder) (charArray: char [] []) =
         let pl len =
-            printf " "
+            sb.Append(sprintf " ") |> ignore
             for i in 0 .. len do
-                printf "-"
-            printfn " "
+                sb.Append(sprintf "-") |> ignore
+            sb.AppendLine(sprintf " ") |> ignore
 
         let l = charArray.[0].Length - 1
         pl l

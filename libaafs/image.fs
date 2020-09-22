@@ -168,13 +168,6 @@ module image =
                           row.[int (vX - pX)] <- vector.[int ((vY * stride) + vX)]
                       block.[int (vY - pY)] <- row
                   block }
-#if DEBUG
-        //retCell.Block
-        //|> Array.mapi (fun ir _ ->
-        //    printf "\n#copyRectToCell Row: %A - " ir
-        //    Array.mapi (fun ic _ -> printf "Col=%A " ic))
-        //|> ignore
-#endif
         retCell
 
     // Cannot assume `stride = (cellWidthCount * dimension)` since cellWidth truncates the right edge, but one can assume
@@ -269,14 +262,6 @@ module image =
                   for cy in 0u .. (cellHeight - 1u) do // skip by cell heights
                       cells.[int cy] <- (makeRowBlocks dimension cellWidth cy rawImageBytes.Width rawImageBytes.Pixels)
                   cells }
-#if DEBUG
-        //retCellImage.Cells
-        //|> Array.mapi (fun iRow row ->
-        //    printf "\n#toBlock: Row=%A" iRow
-        //    row
-        //    |> Array.mapi (fun iCol _ -> printf "ColIndex=%A " iCol))
-        //|> ignore
-#endif
         retCellImage
 
     let getConvertedBlocks cellImage =
