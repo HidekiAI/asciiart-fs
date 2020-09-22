@@ -7,7 +7,6 @@
   <ItemGroup>
     <Compile Include="image.fs" />
     <Compile Include="libaafs.fs" />
-    <None Include="image_test.fsx" />
   </ItemGroup>
 
   <ItemGroup>

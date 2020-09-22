@@ -1,5 +1,7 @@
 ﻿namespace libaafs
 
+open System.Text
+
 //open System.Data
 //open System.Linq.Expressions
 
@@ -300,51 +302,62 @@ module image =
             None
         | (_, _) -> failwith "Unhandled exception!"
 
-    let dumpRGBA (image: RawImageRGB) =
-        printfn "RawImageRGB Width: %A, Height: %A, Size: %A" image.Width image.Height image.Data.Length
+    let dumpRGBA (sb: StringBuilder) (image: RawImageRGB) =
+        sb.AppendLine(sprintf "RawImageRGB Width: %A, Height: %A, Size: %A" image.Width image.Height image.Data.Length)
+        |> ignore
         for y in 0u .. (image.Height - 1u) do
             let scanLine = y * image.Width
-            printf "%4i (width: %4i): " scanLine image.Width
+            sb.Append(sprintf "%4i (width: %4i): " scanLine image.Width)
+            |> ignore
             for x in 0u .. (image.Width - 1u) do
                 let pixel = image.Data.[int (x + scanLine)]
-                printf
-                    "%08X "
-                    ((uint32 pixel.A <<< (8 * 3))
-                     ||| (uint32 pixel.R <<< (8 * 2))
-                     ||| (uint32 pixel.G <<< (8 * 1))
-                     ||| (uint32 pixel.B <<< (8 * 0)))
-            printfn ""
-        printfn ""
+                sb.Append
+                    (sprintf
+                        "%08X "
+                         ((uint32 pixel.A <<< (8 * 3))
+                          ||| (uint32 pixel.R <<< (8 * 2))
+                          ||| (uint32 pixel.G <<< (8 * 1))
+                          ||| (uint32 pixel.B <<< (8 * 0))))
+                |> ignore
+            sb.AppendLine(sprintf "") |> ignore
+        sb.AppendLine(sprintf "") |> ignore
 
-    let dumpByteImage (image: RawImageBytes) =
-        printfn "RawImageBytes Width: %A, Height: %A, Size: %A" image.Width image.Height image.Pixels.Length
+    let dumpByteImage (sb: StringBuilder) (image: RawImageBytes) =
+        sb.AppendLine
+            (sprintf "RawImageBytes Width: %A, Height: %A, Size: %A" image.Width image.Height image.Pixels.Length)
+        |> ignore
         for y in 0u .. (image.Height - 1u) do
             let scanLine = y * image.Width
-            printf "%4i (width: %4i): " scanLine image.Width
+            sb.Append(sprintf "%4i (width: %4i): " scanLine image.Width)
+            |> ignore
             for x in 0u .. (image.Width - 1u) do
                 let pixel = image.Pixels.[int (x + scanLine)]
-                printf "%02X " pixel
-            printfn ""
-        printfn ""
+                sb.Append(sprintf "%02X " pixel) |> ignore
+            sb.AppendLine(sprintf "") |> ignore
+        sb.AppendLine(sprintf "") |> ignore
 
-    let dumpCellImage (image: CellImage) =
-        printfn
-            "CellImage Width: %A, Height: %A, CellWidth: %A, CellHeight: %A, Dimension: %A Size: %A"
-            image.Width
-            image.Height
-            image.CellWidth
-            image.CellHeight
-            image.Dimension
-            image.Cells.Length
+    let dumpCellImage (sb: StringBuilder) (image: CellImage) =
+        sb.AppendLine
+            (sprintf
+                "CellImage Width: %A, Height: %A, CellWidth: %A, CellHeight: %A, Dimension: %A Size: %A"
+                 image.Width
+                 image.Height
+                 image.CellWidth
+                 image.CellHeight
+                 image.Dimension
+                 image.Cells.Length)
+        |> ignore
         for hY in 0u .. (image.CellHeight - 1u) do
             for cy in 0u .. (image.Dimension - 1u) do
-                printf "%4i (width: %4i): " hY image.CellWidth
+                sb.Append(sprintf "%4i (width: %4i): " hY image.CellWidth)
+                |> ignore
                 for wX in 0u .. (image.CellWidth - 1u) do
                     let cell = image.Cells.[int hY].[int wX]
                     // within the cell, extract relative [0..Y][0..X]
                     for cx in 0u .. (cell.Dimension - 1u) do
-                        printf "{(%02i,%02i) %02X} " cy cx cell.Block.[int cy].[int cx]
-                    printf " | "
-                printfn ""
-            printfn ""
-        printfn ""
+                        sb.Append(sprintf "{(%02i,%02i) %02X} " cy cx cell.Block.[int cy].[int cx])
+                        |> ignore
+                    sb.Append(sprintf " | ") |> ignore
+                sb.AppendLine(sprintf "") |> ignore
+            sb.AppendLine(sprintf "") |> ignore
+        sb.AppendLine(sprintf "") |> ignore

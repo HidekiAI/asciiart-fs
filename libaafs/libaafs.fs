@@ -2,6 +2,7 @@ namespace libaafs
 
 open System
 open System.Collections // IDictionary
+open System.Text
 open libaafs
 
 // 4x4 pixel to be mapped to text would require 64K combinations (each 4x1 vector has 16 combinations, in which need 4
@@ -251,7 +252,7 @@ module CharMap =
     let convert filename dimension: char [] [] =
         readImage filename dimension |> convertToBlocks
 
-    let dumpCharMap (charArray: char [] []) =
+    let dumpCharMap (sb: StringBuilder) (charArray: char [] []) =
         let pl len =
             printf " "
             for i in 0 .. len do
@@ -266,5 +267,5 @@ module CharMap =
             |> Array.map (fun row -> new String(row))
 
         for i in 0 .. (lines.Length - 1) do
-            printfn "|%s|" lines.[i] // by placing '|' on edges, you can tell if image comes out blank...
+            sb.AppendLine(sprintf "|%s|" lines.[i]) |> ignore // by placing '|' on edges, you can tell if image comes out blank...
         pl l
