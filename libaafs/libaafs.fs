@@ -28,7 +28,12 @@ open libaafs
 // Thoughts on lookup strategies:
 // Traditionally, for performant lookup, one would combine the 4x4 into a 16-bit (WORD size) hex as a key.
 
+type CharPixel = { Char: char; Color: Pixel }
 
+type ColorType =
+    | ASCII
+    | HTML
+    | NONE
 
 type BlockMap =
     { DimensionXY: uint32
@@ -38,6 +43,7 @@ type private CharBlock =
     { WidthAndHeight: uint32 // it's square, so all we need is one
       Data: byte [] [] // NxN (square) dimension block, where it's [Y][X]
       Char: char }
+
 
 //€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ
 module CharMap =
@@ -181,15 +187,14 @@ module CharMap =
 
     let private blockMaps = map4x4
 
-    let private lookup dimension (byteArray: byte [] []) =
+    let private lookup dimension byteArray =
         blockMaps
         |> Seq.where (fun block -> block.DimensionXY = dimension)
         |> Seq.tryPick (fun block ->
             match block.Map.ContainsKey(byteArray) with
             | true ->
                 match block.Map.TryGetValue byteArray with
-                | true, chVal ->
-                    Some <| chVal
+                | true, chVal -> Some <| chVal
                 | false, _ -> None
             | false -> None)
         |> fun b ->
@@ -201,10 +206,19 @@ module CharMap =
         byteBlock
         |> Array.map (fun row ->
             row
-            |> Array.map (fun col -> if col > 0uy then 1uy else 0uy))
+            |> Array.map (fun col -> if col.Compressed > 0uy then 1uy else 0uy))
+
+    let avgBlocksColor (blocks: Pixel [] []): Pixel =
+        blocks
+        |> Array.fold (fun pixel blockRow ->
+            let avg =
+                blockRow
+                |> Array.fold (fun blockPixel block -> image.avgPixel blockPixel block) image.makeBlackPixel
+
+            image.avgPixel avg pixel) image.makeBlackPixel
 
     /// process in parallel of 4 quadrants
-    let convertToBlocks (dataBlock: CellImage): char [] [] =
+    let convertToBlocks (dataBlock: CellImage): CharPixel [] [] =
         printfn
             "Converting CellImage: %Ax%A pixels, %Ax%A cells, Dimension=%A cellSize: %A cell blocks"
             dataBlock.Width
@@ -221,13 +235,10 @@ module CharMap =
             let charRow =
                 Array.zeroCreate (int dataBlock.CellWidth)
 
-            let toStr (byteArray: byte []) =
-                byteArray
-                |> Array.fold (fun s b -> sprintf "%s %02X" s b) ""
-
             for cellX in 0u .. (dataBlock.CellWidth - 1u) do
                 let cell = dataBlock.Cells.[int cellY].[int cellX]
-                charRow.[int cellX] <- lookup cell.Dimension (blockToBitMap cell.Block)
+                charRow.[int cellX] <- { Char = lookup cell.Dimension (blockToBitMap cell.Block)
+                                         Color = avgBlocksColor cell.Block } //  just use the upper left color
             charMap.[int cellY] <- charRow
         charMap
 
@@ -236,10 +247,10 @@ module CharMap =
         |> image.toGreyScale
         |> image.toBlock dimension // make a block of NxN
 
-    let convert filename dimension: char [] [] =
+    let convert filename dimension: CharPixel [] [] =
         readImage filename dimension |> convertToBlocks
 
-    let dumpCharMap (sb: StringBuilder) (charArray: char [] []) =
+    let dumpCharMap (sb: StringBuilder) (colorType: ColorType) (charArray: CharPixel [] []) =
         let pl len =
             sb.Append(sprintf " ") |> ignore
             for i in 0 .. len do
@@ -247,12 +258,45 @@ module CharMap =
             sb.AppendLine(sprintf " ") |> ignore
 
         let l = charArray.[0].Length - 1
+
+        let lines: string [] =
+            match colorType with
+            | ASCII ->
+                charArray
+                |> Array.map (fun row ->
+                    row
+                    |> Array.map (fun cp ->
+                        cp.Color.ASCIIColor.ToString()
+                        + cp.Char.ToString())
+                    |> Array.reduce (+))
+            | HTML ->
+                charArray
+                |> Array.map (fun row ->
+                    row
+                    // <font color="red">This text is red!</font>
+                    |> Array.map (fun cp ->
+                        "<font color=\"#"
+                        + cp.Color.HtmlColor
+                        + "\">"
+                        + cp.Char.ToString()
+                        + "</font>")
+                    |> Array.map string
+                    |> Array.reduce (+))
+            | NONE
+            | _ ->
+                charArray
+                |> Array.map (fun row ->
+                    row
+                    |> Array.map (fun cp -> cp.Char)
+                    |> Array.map string
+                    |> Array.reduce (+))
+
+
+        if colorType = ColorType.HTML then
+            sb.AppendLine(@"<!DOCTYPE html><html><body><pre>") |> ignore
         pl l
-
-        let lines =
-            charArray
-            |> Array.map (fun row -> new String(row))
-
         for i in 0 .. (lines.Length - 1) do
             sb.AppendLine(sprintf "|%s|" lines.[i]) |> ignore // by placing '|' on edges, you can tell if image comes out blank...
         pl l
+        if colorType = ColorType.HTML then
+            sb.AppendLine(@"</pre></body></html>") |> ignore
