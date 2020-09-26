@@ -26,7 +26,7 @@ type RawImageRGB =
       // Possibly use System.Drawing.Color here
       Data: RGBA [] } // single stream, leave it to width and height to make it 2D
 
-type RawImageBytes =
+type RawLibPixelImage =
     { Width: uint32
       Height: uint32
       Pixels: Pixel [] } // only 16 shades of grey are visible to human eyes
@@ -635,12 +635,13 @@ module image =
             let imageArray = Array.zeroCreate (arraySize + 1) //  pre-allocate array block for performance (way faster than Array.Append! no leak, probably GC kicking in after 1/4 point, gets slower and slower)
 
             printfn
-                "Opened and read file '%A': Width=%A, Height=%A (Size: %A pixels, ArraySize: %A bytes)"
+                "Opened and read file '%A': Width=%A, Height=%A (ArraySize: %A bytes (%A x %A))"
                 filename
                 image.Width
                 image.Height
-                (image.Width * image.Height)
                 imageArray.Length
+                image.Height
+                (image.Width - 1)
 
             let retRecord =
                 { Width = uint32 image.Width
@@ -655,7 +656,6 @@ module image =
                                                                             A = pixel.A }
                       imageArray }
             // verify that last pixel was written (cannot really unit-test actual file reading, so this is here)
-
             match box retRecord.Data.[arraySize] with
             | null -> failwith "Unable to read entire image of dimensions specified"
             | v -> ignore v
@@ -672,27 +672,44 @@ module image =
             None
 
     let readPng filename: RawImageRGB =
-        match read filename with
-        | Some image -> image
-        | None -> failwith (sprintf "Unable to load %A" filename)
+        let stopWatch = System.Diagnostics.Stopwatch.StartNew()
 
-    let toGreyScale (rawImage: RawImageRGB): RawImageBytes =
+        let ret =
+            match read filename with
+            | Some image -> image
+            | None -> failwith (sprintf "Unable to load %A" filename)
+
+        stopWatch.Stop()
+        printfn "%f mSec" stopWatch.Elapsed.TotalMilliseconds
+        ret
+
+    let toRawLibPixelImage (rawImage: RawImageRGB): RawLibPixelImage =
+        let stopWatch = System.Diagnostics.Stopwatch.StartNew()
         printfn
             "Processing RawImageRGB: Width=%A, Height=%A, Size=%A bytes"
             rawImage.Width
             rawImage.Height
             rawImage.Data.Length
 
-        let pixelArray =
-            Array.zeroCreate (int (rawImage.Width * rawImage.Height))
+        let pixelArray = Array.zeroCreate rawImage.Data.Length   // just copying the entire image, so dimension must match!
 
-        { Width = rawImage.Width
-          Height = rawImage.Height
-          Pixels =
-              let arraySize = uint32 rawImage.Data.Length - 1u
-              for pxy in 0u .. arraySize do
-                  pixelArray.[int pxy] <- makePixel rawImage.Data.[int pxy]
-              pixelArray }
+        let retBitMapImage =
+            { Width = rawImage.Width
+              Height = rawImage.Height
+              Pixels =
+                  let arraySize = uint32 rawImage.Data.Length - 1u
+                  for pxy in 0u .. arraySize do
+                      pixelArray.[int pxy] <- makePixel rawImage.Data.[int pxy]
+                  pixelArray }
+
+        stopWatch.Stop()
+        printfn "%f mSec" stopWatch.Elapsed.TotalMilliseconds
+
+        //if rawImage.Data.Length
+        //   <> retBitMapImage.Pixels.Length then
+        //    failwith "Programmer error, dimensions of the converted image does not match the original!"
+
+        retBitMapImage
 
     let private toImageRect width height (byteArray: Pixel []): Pixel [] [] =
         let twoDArray = Array.zeroCreate (height) // creating jagged[][] array, but initializing only the rows
@@ -703,11 +720,26 @@ module image =
             twoDArray.[y] <- scanLine
         twoDArray
 
+    let private debugDumpCell rowY colX (cell: Cell) =
+        printfn "---------------- Row: %A, Col: %A" rowY colX
+        for row in 0u .. (cell.Dimension - 1u) do
+            for col in 0u .. (cell.Dimension - 1u) do
+                printf "%02X|" cell.Block.[int(row)].[int col].Compressed
+            printfn ""
+
     let private copyRectToCell dimension pX pY stride (vector: Pixel []): Cell =
-        if (uint32
-                (((pY + (dimension - 1u)) * stride)
-                 + (pX + (dimension - 1u)))) > (uint32 vector.Length) then
-            failwith "Invalid (X,Y) coordinate, will lead to index outside the buffer pool"
+        let imageEnd = uint32 vector.Length
+        let blockBottomY = pY + (dimension - 1u)
+        let imageBottomY = blockBottomY * (stride - 1u) // assume maxX is stride
+        let blockRightX = pX + (dimension - 1u)
+        if blockRightX > (stride - 1u)
+        then failwith
+                 "Invalid positionX, it (with dimension width added) should not exceed right most edge (stride) value!"
+        if imageBottomY > imageEnd
+        then failwith
+                 "Invalid positionY, it (with dimension height added) should not exceed beyond the vector dimension"
+        if (uint32 (imageBottomY + blockRightX)) > imageEnd
+        then failwith "Invalid (X,Y) coordinate, will lead to index outside the buffer pool"
 
         let retCell =
             { Dimension = dimension
@@ -728,10 +760,21 @@ module image =
                   //      //        blockRow |]
                   //      //block
                   let block = Array.zeroCreate (int dimension)
-                  for vY in pY .. (pY + (dimension - 1u)) do
+                  for vY in pY .. blockBottomY do
                       let row = Array.zeroCreate (int dimension)
-                      for vX in pX .. (pX + (dimension - 1u)) do
-                          row.[int (vX - pX)] <- vector.[int ((vY * stride) + vX)]
+                      for vX in pX .. blockRightX do
+                          let iVector = (vY * (stride - 1u)) + vX
+
+                          let pixel =
+#if DEBUG
+                              match box vector.[int iVector] with
+                              | null -> failwith "Programmer error, invalid coordinates"
+                              | v -> vector.[int iVector]
+#else
+                              vector.[int iVector]
+
+#endif
+                          row.[int (vX - pX)] <- pixel
                       block.[int (vY - pY)] <- row
                   block }
 
@@ -745,9 +788,11 @@ module image =
                             (stride: uint32) // for a single dimension vector, need to know where the edge of the image is
                             (vector: Pixel []) // entire image stream, there are no check when you pass cellY outside the image buffer
                             : Cell [] =
+        let bottomVectorY = (((stride - 1u) * cellDimension) * (cellY + 1u)) - 1u
         if (cellDimension % 2u) = 1u then failwith "Dimension must be even sized"
         if stride < (cellWidthCount * cellDimension)
         then failwith "Cell count for the row cannot exceed the image width"
+        if bottomVectorY > uint32 vector.Length then failwith "cellY passed exceeds vector resolution"
 
         let cellRow = Array.zeroCreate (int cellWidthCount)
         let scanline = cellY * cellDimension // upper left Y of the row we're creating
@@ -807,15 +852,20 @@ module image =
 
         cells
 
-    let toBlock dimension (rawImageBytes: RawImageBytes): CellImage =
+    let toBlock dimension (rawImageBytes: RawLibPixelImage): CellImage =
+        let stopWatch = System.Diagnostics.Stopwatch.StartNew()
+        let cellWidth = rawImageBytes.Width / dimension
+        let cellHeight = rawImageBytes.Height / dimension
+        let rightMostCorner = ((cellHeight - 1u) * dimension) + ((cellWidth - 1u) * dimension)
         if (dimension % 2u) = 1u then failwith "Dimension must be even sized"
+        if rightMostCorner > uint32 rawImageBytes.Pixels.Length then failwith "Programmer error: incorrect Cell dimension calculated"
         printfn
-            "Processing RawImageBytes: Width=%A, Height=%A, Size=%A bytes"
+            "Processing RawImageBytes: Width=%A, Height=%A, Size=%A bytes; CellWidth=%A CellHeight=%A"
             rawImageBytes.Width
             rawImageBytes.Height
             rawImageBytes.Pixels.Length
-        let cellWidth = rawImageBytes.Width / dimension
-        let cellHeight = rawImageBytes.Height / dimension
+            cellWidth
+            cellHeight
         //let arraySize = cellHeight * (cellWidth - 1u)
         let retCellImage =
             { Width = rawImageBytes.Width
@@ -830,6 +880,8 @@ module image =
                       cells.[int cy] <- (makeRowBlocks dimension cellWidth cy rawImageBytes.Width rawImageBytes.Pixels)
                   cells }
 
+        stopWatch.Stop()
+        printfn "%f mSec" stopWatch.Elapsed.TotalMilliseconds
         retCellImage
 
     let getConvertedBlocks cellImage =
@@ -875,7 +927,7 @@ module image =
             sb.AppendLine(sprintf "") |> ignore
         sb.AppendLine(sprintf "") |> ignore
 
-    let dumpByteImage (sb: StringBuilder) (image: RawImageBytes) =
+    let dumpByteImage (sb: StringBuilder) (image: RawLibPixelImage) =
         sb.AppendLine
             (sprintf "RawImageBytes Width: %A, Height: %A, Size: %A" image.Width image.Height image.Pixels.Length)
         |> ignore

@@ -219,6 +219,7 @@ module CharMap =
 
     /// process in parallel of 4 quadrants
     let convertToBlocks (dataBlock: CellImage): CharPixel [] [] =
+        let stopWatch = System.Diagnostics.Stopwatch.StartNew()
         printfn
             "Converting CellImage: %Ax%A pixels, %Ax%A cells, Dimension=%A cellSize: %A cell blocks"
             dataBlock.Width
@@ -240,11 +241,13 @@ module CharMap =
                 charRow.[int cellX] <- { Char = lookup cell.Dimension (blockToBitMap cell.Block)
                                          Color = avgBlocksColor cell.Block } //  just use the upper left color
             charMap.[int cellY] <- charRow
+        stopWatch.Stop()
+        printfn "%f mSec" stopWatch.Elapsed.TotalMilliseconds
         charMap
 
     let private readImage filename dimension: CellImage =
         image.readPng filename
-        |> image.toGreyScale
+        |> image.toRawLibPixelImage
         |> image.toBlock dimension // make a block of NxN
 
     let convert filename dimension: CharPixel [] [] =
@@ -293,10 +296,11 @@ module CharMap =
 
 
         if colorType = ColorType.HTML then
-            sb.AppendLine(@"<!DOCTYPE html><html><body><pre>") |> ignore
+            sb.AppendLine(@"<!DOCTYPE html><html><body><pre>")
+            |> ignore
         pl l
         for i in 0 .. (lines.Length - 1) do
             sb.AppendLine(sprintf "|%s|" lines.[i]) |> ignore // by placing '|' on edges, you can tell if image comes out blank...
         pl l
-        if colorType = ColorType.HTML then
-            sb.AppendLine(@"</pre></body></html>") |> ignore
+        if colorType = ColorType.HTML
+        then sb.AppendLine(@"</pre></body></html>") |> ignore

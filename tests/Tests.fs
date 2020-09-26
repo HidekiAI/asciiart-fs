@@ -55,13 +55,17 @@ type MyTests(output: ITestOutputHelper) =
                         B = byte p &&& 255uy
                         A = 127uy } |] } // 50% translucent
 
-        let greyScale10xH = image.toGreyScale image10xH
+        let greyScale10xH = image.toRawLibPixelImage image10xH
         let sb = StringBuilder()
         image.dumpByteImage sb greyScale10xH
         output.WriteLine(sb.ToString())
         Assert.True(greyScale10xH.Pixels.[63].Compressed = 63uy)
-        if greyScale10xH.Pixels.[63].Compressed <> 63uy
+        if greyScale10xH.Pixels.[63].Compressed <> 63uy // 0x4D
         then failwith "Expected last data in greyscale to be 63"
+        // bottom right of last block:
+        if greyScale10xH.Pixels.[((4 * 10 * 2) - (10 - (2 * 4)) - 1)].Compressed
+           <> 77uy then // 0x4D
+            failwith "Expected last data in greyscale to be 77 (0x4D)"
 
     [<Fact>]
     let ``Tests BlockImage type`` () =
@@ -83,7 +87,7 @@ type MyTests(output: ITestOutputHelper) =
                         B = byte p &&& 255uy
                         A = 127uy } |] } // 50% translucent
 
-        let greyScale10xH = image.toGreyScale image10xH
+        let greyScale10xH = image.toRawLibPixelImage image10xH
 
         let blocks =
             image.toBlock (uint32 dimension) greyScale10xH
@@ -99,8 +103,6 @@ type MyTests(output: ITestOutputHelper) =
     [<Fact>]
     let ``Test blocks conversion`` () =
         let dimension = 4u // we'll test for 4x4 cells
-        // make sure imageHeight is 8 or greater, for unit test is looking for specific index close to end of image
-        let imageDimension = dimension * 2u
 
         let white =
             { R = 255uy
@@ -118,7 +120,10 @@ type MyTests(output: ITestOutputHelper) =
                black
                black
                black
-               black |]
+               black
+               white // extra that won't fit in the cell
+               black
+               white |]
 
         let whiteOnRightRow =
             [| black
@@ -128,7 +133,10 @@ type MyTests(output: ITestOutputHelper) =
                white
                white
                white
-               white |]
+               white
+               black // extra that won't fit in the cell
+               black
+               black |]
 
         let whiteBlockOnLeft =
             [| whiteOnLeftRow
@@ -144,17 +152,30 @@ type MyTests(output: ITestOutputHelper) =
                whiteOnRightRow |]
             |> Array.collect (fun row -> row)
 
+        // make sure that if image is not block divisible test
+        let halfBlock =
+            [| whiteOnRightRow
+               whiteOnRightRow
+               whiteOnLeftRow |]
+            |> Array.collect (fun row -> row)
+
+        let myBlocks =
+            [| whiteBlockOnLeft
+               whiteBlockOnRight
+               halfBlock |]
+            |> Array.collect (fun row -> row)
+
+        let imageWidth = uint32 whiteOnLeftRow.Length
+        let imageHeight = uint32 myBlocks.Length / imageWidth
+
         let image8x8: RawImageRGB =
             {
               // purposefully set dimension to be not divisible by block size of 4x4
-              Width = imageDimension
-              Height = imageDimension
-              Data =
-                  [| whiteBlockOnLeft
-                     whiteBlockOnRight |]
-                  |> Array.collect (fun row -> row) }
+              Width = imageWidth
+              Height = imageHeight
+              Data = myBlocks }
 
-        let greyScale8x8 = image.toGreyScale image8x8
+        let greyScale8x8 = image.toRawLibPixelImage image8x8
 
         let blocks =
             image.toBlock (uint32 dimension) greyScale8x8
@@ -237,17 +258,28 @@ type MyTests(output: ITestOutputHelper) =
                blueCyan |]
             |> Array.collect (fun row -> row)
 
+        // make sure that if image is not block divisible test
+        let halfBlock =
+            [| greenRed; blueCyan |]
+            |> Array.collect (fun row -> row)
+
+        let myBlocks =
+            [| greenRedBlocks
+               blueCyanBlocks
+               halfBlock |]
+            |> Array.collect (fun row -> row)
+
+        let imageWidth = imageDimension
+        let imageHeight = uint32 myBlocks.Length / imageWidth
+
         let image8x8: RawImageRGB =
             {
               // purposefully set dimension to be not divisible by block size of 4x4
-              Width = imageDimension
-              Height = imageDimension
-              Data =
-                  [| greenRedBlocks
-                     blueCyanBlocks |]
-                  |> Array.collect (fun row -> row) }
+              Width = imageWidth
+              Height = imageHeight
+              Data = myBlocks }
 
-        let greyScale8x8 = image.toGreyScale image8x8
+        let greyScale8x8 = image.toRawLibPixelImage image8x8
 
         let blocks =
             image.toBlock (uint32 dimension) greyScale8x8
