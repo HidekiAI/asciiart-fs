@@ -294,9 +294,8 @@ module CharMap =
                     |> Array.map string
                     |> Array.reduce (+))
 
-
         if colorType = ColorType.HTML then
-            sb.AppendLine(@"<!DOCTYPE html><html><body><pre>")
+            sb.AppendLine(@"<!DOCTYPE html><html><body bgcolor=""#000000""><pre>")
             |> ignore
         pl l
         for i in 0 .. (lines.Length - 1) do

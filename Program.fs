@@ -9,7 +9,7 @@ let main argv =
     let chArray = libaafs.CharMap.convert filename dimension
     printfn "Filename: %A" filename
     let sb = new StringBuilder()
-    CharMap.dumpCharMap sb ColorType.ASCII chArray
+    CharMap.dumpCharMap sb ColorType.HTML chArray
     printfn "%A" sb
 
     0 // return an integer exit code
