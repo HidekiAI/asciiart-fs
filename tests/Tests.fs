@@ -68,6 +68,36 @@ type MyTests(output: ITestOutputHelper) =
             failwith "Expected last data in greyscale to be 77 (0x4D)"
 
     [<Fact>]
+    let ``Tests NO BlockImage`` () =
+        let dimension = 4 // we'll test for 4x4 cells
+
+        let data =
+            [|
+            // to make test predictable, N-th color will be N
+            for p in 0 .. (10 * 3) do // 10 wide, 3 high (2 pixels extra on edges, but 1 scanline short)
+                { R = byte p &&& 255uy
+                  G = byte p &&& 255uy
+                  B = byte p &&& 255uy
+                  A = 127uy } |] // 50% translucent
+
+        let image10xH: RawImageRGB =
+            {
+              // purposefully set dimension to be not divisible by block size of 4x4
+              Width = 10u // having it width of 10 makes it easier to visually verify data, also will verify truncated block
+              Height = 3u
+              Data = data }
+
+        let greyScale10xH = image.toRawLibPixelImage image10xH
+
+        //Assert.Equal<Collections.Generic.IEnumerable<int>>(expected, actual)
+        let block =
+            image.toBlock (uint32 dimension) greyScale10xH
+        let myDelegate =
+            System.Func<_> (fun () -> image.toBlock (uint32 dimension) greyScale10xH)
+        //Assert.Throws<System.Exception>(myDelegate.Invoke)
+        block
+
+    [<Fact>]
     let ``Tests BlockImage type`` () =
         let dimension = 4 // we'll test for 4x4 cells
         // make sure imageHeight is 8 or greater, for unit test is looking for specific index close to end of image

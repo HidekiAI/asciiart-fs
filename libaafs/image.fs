@@ -624,51 +624,55 @@ module image =
         makePixel { R = 0uy; G = 0uy; B = 0uy; A = 0uy }
 
     // there are no check to determine if filename has extension '.png', nor does it check (after reading) if it is Bitmap.Png type
+    // WARNING: Unsure if it's a bug or by design, but when reading (at least PNG) image, the width (stride) is +1 extra pixel
+    // hence building image via hand (i.e. unit-test) width would fail if using what gets read as the source of truth.
+    // Because of this nature, reading FROM the image, we will have to reduce the width by 1
     let private read (filename: string): RawImageRGB option =
         try
             let image = new Bitmap(filename) // IDisposable
+            let realImageWidth = image.Width - 1   // the anomalies of Bitmap reader making width one greater than it really is...
 
             // NOTE: This will initialize each cells with NULL, so if you get NULL, it's most likely because of programmer error, in
             // which you did not correctly cover each pixels (i.e. you missed out the edge of the image due to -1, etc)
-            let arraySize = image.Height * (image.Width - 1) // why not Height-1?
-            // odd, but need to allocate +1 here
-            let imageArray = Array.zeroCreate (arraySize + 1) //  pre-allocate array block for performance (way faster than Array.Append! no leak, probably GC kicking in after 1/4 point, gets slower and slower)
+            let arraySize = image.Height * realImageWidth
+            let imageArray = Array.zeroCreate arraySize //  pre-allocate array block for performance (way faster than Array.Append! no leak, probably GC kicking in after 1/4 point, gets slower and slower)
 
             printfn
-                "Opened and read file '%A': Width=%A, Height=%A (ArraySize: %A bytes (%A x %A))"
+                "Opened and read file '%A': Width=%A, Height=%A (ArraySize: %A bytes)"
                 filename
-                image.Width
+                realImageWidth
                 image.Height
                 imageArray.Length
-                image.Height
-                (image.Width - 1)
 
             let retRecord =
-                { Width = uint32 image.Width
+                { Width = uint32 realImageWidth
                   Height = uint32 image.Height
                   Data =
                       for y in 0 .. (image.Height - 1) do
-                          for x in 0 .. (image.Width - 1) do
+                          for x in 0 .. (realImageWidth - 1) do
                               let pixel (*System.Drawing.*) : Color = image.GetPixel(int x, int y)
-                              imageArray.[x + ((image.Width - 1) * y)] <- { R = pixel.R
-                                                                            G = pixel.G
-                                                                            B = pixel.B
-                                                                            A = pixel.A }
+                              imageArray.[x + (realImageWidth * y)] <- { R = pixel.R; G = pixel.G; B = pixel.B; A = pixel.A }
                       imageArray }
             // verify that last pixel was written (cannot really unit-test actual file reading, so this is here)
-            match box retRecord.Data.[arraySize] with
+            match box retRecord.Data.[arraySize - 1] with
             | null -> failwith "Unable to read entire image of dimensions specified"
             | v -> ignore v
             retRecord |> Some
         with
-        | :? ArgumentOutOfRangeException ->
+        | :? ArgumentOutOfRangeException as e ->
             printfn "Argument (either X or Y) for Bitmap.GetPixel(x,y) is out of range (programmer error)"
+            printfn "%s" e.Message
             None
-        | :? ArgumentException ->
+        | :? ArgumentException as e ->
             printfn "ArgumentExceptions for '%A'" filename
+            printfn "%s" e.Message
             None
-        | _ ->
+        | Failure (msg) ->
+            printf "%s" msg
+            None
+        | e ->
             printfn "Unhandled exception"
+            printfn "%s" e.Message
             None
 
     let readPng filename: RawImageRGB =
@@ -677,7 +681,7 @@ module image =
         let ret =
             match read filename with
             | Some image -> image
-            | None -> failwith (sprintf "Unable to load %A" filename)
+            | None -> failwith (sprintf "Unable to load '%A'" filename)
 
         stopWatch.Stop()
         printfn "%f mSec" stopWatch.Elapsed.TotalMilliseconds
@@ -691,7 +695,7 @@ module image =
             rawImage.Height
             rawImage.Data.Length
 
-        let pixelArray = Array.zeroCreate rawImage.Data.Length   // just copying the entire image, so dimension must match!
+        let pixelArray = Array.zeroCreate rawImage.Data.Length // just copying the entire image, so dimension must match!
 
         let retBitMapImage =
             { Width = rawImage.Width
@@ -727,19 +731,103 @@ module image =
                 printf "%02X|" cell.Block.[int(row)].[int col].Compressed
             printfn ""
 
-    let private copyRectToCell dimension pX pY stride (vector: Pixel []): Cell =
+    // on a 10x11 at dim=4, the bottom-right corner block's bottom right pixel coordinate
+    // will be based on:
+    // * first Scanline (Pixel Y coordinate) of bottom most cell: (cellHeight - 1) * dimension => (2 - 1) * 4 = 4
+    // * upper left corner Pixel coordinate of bottom right cell: (cellWidth - 1) * dimension => (2 - 1) * 4 = 4, so (4, 4)
+    // * bottom right corner coordinate: (4 + (dimension - 1)), (4 + (dimension - 1)) => (7, 7)
+    // * array index = (7 * imageWidth) + 7 = (7 * 10) + 7 = 77
+    // NOTE: This calculation will NOT check/test for boundaries/ceilings/floor!  Only verification it can do is
+    //       test to make sure internally calculated X position is less than stride length
+#if DEBUG
+    let private calcIndex pX pY stride maxIndex =
+        let i = int ((pY * stride) + pX)
+        if i >= maxIndex
+        then failwith "pX pY passed exceeds maxIndex"
+        i
+#else
+    let private calcIndex pX pY stride = int ((pY * stride)) + pX)
+#endif
+#if DEBUG
+    let private calcArrayIndex cellX cellY dimension stride maxIndex: int [] [] =
+#else
+    let private calcArrayIndex cellX cellY dimension stride: int [] [] =
+#endif
+        let pixelY = cellY * dimension
+        let pixelX = cellX * dimension
+        let maxCellX = stride / dimension
+        if cellX >= maxCellX
+        then failwith "Invalid cellX passed which is located outside the stride dimension"
+        let cellIndices = Array.zeroCreate (int dimension)
+        for y in 0u .. (dimension - 1u) do
+            let cells = Array.zeroCreate (int dimension)
+            for x in 0u .. (dimension - 1u) do
+                let index =
+#if DEBUG
+                    calcIndex (pixelX + x) (pixelY + y) stride maxIndex
+#else
+                    calcIndex (pixelX + x) (pixelY + y) stride
+
+#endif
+                cells.[int x] <- index
+            cellIndices.[int y] <- cells
+        cellIndices
+
+    //let private calcCellXY pX pY dimension =
+    //    let cellX = pX / dimension
+    //    let cellY = pY / dimension
+    //    (cellX, cellY)
+    let private dumpCopyRectArgs pX pY dimension stride (vector: Pixel []) strMsg =
+        strMsg
+        + (sprintf "\n\tpX=%A, pY=%A; dimension=%A; stride=%A; vector=%A" pX pY dimension stride vector.Length)
+
+    let private copyRectToCell pX pY dimension stride (vector: Pixel []): Cell =
         let imageEnd = uint32 vector.Length
         let blockBottomY = pY + (dimension - 1u)
-        let imageBottomY = blockBottomY * (stride - 1u) // assume maxX is stride
+        let imageBottomY = blockBottomY * stride  // assume maxX is stride
         let blockRightX = pX + (dimension - 1u)
-        if blockRightX > (stride - 1u)
-        then failwith
-                 "Invalid positionX, it (with dimension width added) should not exceed right most edge (stride) value!"
+        let cellX = pX / dimension
+        let cellY = pY / dimension
+        if blockRightX > (stride - 1u) then
+            failwith
+                (dumpCopyRectArgs
+                    pX
+                     pY
+                     dimension
+                     stride
+                     vector
+                     (sprintf
+                         "Invalid positionX(%A), it (with dimension width added) should not exceed right most edge (stride=%A) value!"
+                          pX
+                          stride))
         if imageBottomY > imageEnd
         then failwith
                  "Invalid positionY, it (with dimension height added) should not exceed beyond the vector dimension"
         if (uint32 (imageBottomY + blockRightX)) > imageEnd
         then failwith "Invalid (X,Y) coordinate, will lead to index outside the buffer pool"
+
+        let indices =
+#if DEBUG
+            calcArrayIndex cellX cellY dimension stride vector.Length
+#else
+            calcArrayIndex cellX cellY dimension stride
+#endif
+#if DEBUG
+        for iY in 0u .. (dimension - 1u) do
+            for iX in 0u .. (dimension - 1u) do
+                let i = indices.[int iY].[int iX]
+                if i >= vector.Length then
+                    failwith
+                        (sprintf
+                            "Invalid index=%A (%A, %A) calculated at (%A, %A) with dimension=%A, stride=%A"
+                             i
+                             iX
+                             iY
+                             pX
+                             pY
+                             dimension
+                             stride)
+#endif
 
         let retCell =
             { Dimension = dimension
@@ -759,11 +847,28 @@ module image =
                   //      //                vector.[pixelIndex] |]
                   //      //        blockRow |]
                   //      //block
+                  //let block = Array.zeroCreate (int dimension)
+                  //for vY in pY .. blockBottomY do
+                  //    let row = Array.zeroCreate (int dimension)
+                  //    for vX in pX .. blockRightX do
+                  //        let iVector = (vY * (stride - 1u)) + vX
+
+                  //        let pixel =
+#if DEBUG
+                  //            match box vector.[int iVector] with
+                  //            | null -> failwith "Programmer error, invalid coordinates"
+                  //            | v -> vector.[int iVector]
+#else
+                  //            vector.[int iVector]
+#endif
+                  //        row.[int (vX - pX)] <- pixel
+                  //    block.[int (vY - pY)] <- row
+                  //block
                   let block = Array.zeroCreate (int dimension)
-                  for vY in pY .. blockBottomY do
+                  for iRow in 0u .. (dimension - 1u) do
                       let row = Array.zeroCreate (int dimension)
-                      for vX in pX .. blockRightX do
-                          let iVector = (vY * (stride - 1u)) + vX
+                      for iCol in 0u .. (dimension - 1u) do
+                          let iVector = indices.[int(iRow)].[int (iCol)]
 
                           let pixel =
 #if DEBUG
@@ -774,8 +879,8 @@ module image =
                               vector.[int iVector]
 
 #endif
-                          row.[int (vX - pX)] <- pixel
-                      block.[int (vY - pY)] <- row
+                          row.[int (iCol)] <- pixel
+                      block.[int (iRow)] <- row
                   block }
 
         retCell
@@ -788,11 +893,14 @@ module image =
                             (stride: uint32) // for a single dimension vector, need to know where the edge of the image is
                             (vector: Pixel []) // entire image stream, there are no check when you pass cellY outside the image buffer
                             : Cell [] =
-        let bottomVectorY = (((stride - 1u) * cellDimension) * (cellY + 1u)) - 1u
+        let bottomVectorY =
+            ((stride * cellDimension) * cellY)
+
         if (cellDimension % 2u) = 1u then failwith "Dimension must be even sized"
         if stride < (cellWidthCount * cellDimension)
         then failwith "Cell count for the row cannot exceed the image width"
-        if bottomVectorY > uint32 vector.Length then failwith "cellY passed exceeds vector resolution"
+        if bottomVectorY > uint32 vector.Length
+        then failwith "cellY passed exceeds vector resolution"
 
         let cellRow = Array.zeroCreate (int cellWidthCount)
         let scanline = cellY * cellDimension // upper left Y of the row we're creating
@@ -801,7 +909,7 @@ module image =
             let pX = (cx * cellDimension) // upper left X of the current cell we're going to build
             // create a NxN cell block
             let cell =
-                copyRectToCell cellDimension pX scanline stride vector
+                copyRectToCell pX scanline cellDimension stride vector
 
             cellRow.[int cx] <- cell
         cellRow
@@ -856,9 +964,8 @@ module image =
         let stopWatch = System.Diagnostics.Stopwatch.StartNew()
         let cellWidth = rawImageBytes.Width / dimension
         let cellHeight = rawImageBytes.Height / dimension
-        let rightMostCorner = ((cellHeight - 1u) * dimension) + ((cellWidth - 1u) * dimension)
         if (dimension % 2u) = 1u then failwith "Dimension must be even sized"
-        if rightMostCorner > uint32 rawImageBytes.Pixels.Length then failwith "Programmer error: incorrect Cell dimension calculated"
+
         printfn
             "Processing RawImageBytes: Width=%A, Height=%A, Size=%A bytes; CellWidth=%A CellHeight=%A"
             rawImageBytes.Width
@@ -866,6 +973,11 @@ module image =
             rawImageBytes.Pixels.Length
             cellWidth
             cellHeight
+        if cellHeight = 0u
+        then failwith "Invalid image height, in order to make a block, it requires at least the dimension height"
+        if cellWidth = 0u
+        then failwith "Invalid image width, in order to make a block, it requires at least the dimension width"
+
         //let arraySize = cellHeight * (cellWidth - 1u)
         let retCellImage =
             { Width = rawImageBytes.Width
@@ -905,7 +1017,7 @@ module image =
         | (x, _) when (uint32 x) > cellImage.CellWidth ->
             printfn "(%i, %i) - X position is out of range (want less than %i)" cX cY cellImage.CellWidth
             None
-        | (_, _) -> failwith "Unhandled exception!"
+        | (_, _) -> failwith (sprintf "Unhandled exception for value (%i, %i)" cX cY)
 
     let dumpRGBA (sb: StringBuilder) (image: RawImageRGB) =
         sb.AppendLine(sprintf "RawImageRGB Width: %A, Height: %A, Size: %A" image.Width image.Height image.Data.Length)
