@@ -202,11 +202,25 @@ module CharMap =
             | Some v -> v
             | None -> failwith (sprintf "Unhandled byte-array key: %A" byteArray)
 
-    let blockToBitMap byteBlock =
-        byteBlock
-        |> Array.map (fun row ->
-            row
-            |> Array.map (fun col -> if col.Compressed > 0uy then 1uy else 0uy))
+    // Current implementation is based on breaking down the NxN block into quadrants of cells
+    // in which each of these sub-blocks are either all white or all black
+    // the data-structure is in format of (i.e. for a 4x4 block):
+    //        // 1|0|0|1
+    //        Data =
+    //            [| [| 1uy; 1uy; 0uy; 0uy |]
+    //               [| 1uy; 1uy; 0uy; 0uy |]
+    //               [| 0uy; 0uy; 1uy; 1uy |]
+    //               [| 0uy; 0uy; 1uy; 1uy |] |]
+    // in which we'll have to convert it into quadrants
+    let blockToBitMap (byteBlock: Pixel [] []): byte[][] =
+        if (byteBlock.Length % 2) <> 0 then failwith "Block dimension (width) must be divisible into half"
+        if (byteBlock.[0].Length % 2) <> 0 then failwith "Block dimension (height) must be divisible into half"
+        let cellDimension = byteBlock.Length / 2
+        let quad0 = [| for y in 0..(cellDimension - 1) do for x in 0..(cellDimension - 1) do byteBlock.[y].[x].Compressed |]
+        let quad1 = [| for y in 0..(cellDimension - 1) do for x in 0..(cellDimension - 1) do byteBlock.[y].[x].Compressed |]
+        let quad2 = [| for y in 0..(cellDimension - 1) do for x in 0..(cellDimension - 1) do byteBlock.[y].[x].Compressed |]
+        let quad3 = [| for y in 0..(cellDimension - 1) do for x in 0..(cellDimension - 1) do byteBlock.[y].[x].Compressed |]
+        [|quad0; quad1; quad2; quad3|]
 
     let avgBlocksColor (blocks: Pixel [] []): Pixel =
         blocks
@@ -221,13 +235,14 @@ module CharMap =
     let convertToBlocks (dataBlock: CellImage): CharPixel [] [] =
         let stopWatch = System.Diagnostics.Stopwatch.StartNew()
         printfn
-            "Converting CellImage: %Ax%A pixels, %Ax%A cells, Dimension=%A cellSize: %A cell blocks"
+            "Converting CellImage: %Ax%A pixels, %Ax%A cells, Dimension=%A (cellSize: %A cell rows x %A cell columns)"
             dataBlock.Width
             dataBlock.Height
             dataBlock.CellWidth
             dataBlock.CellHeight
             dataBlock.Dimension
             dataBlock.Cells.Length
+            dataBlock.Cells.[0].Length
 
         let charMap =
             Array.zeroCreate (int (dataBlock.CellHeight)) // init each rows
@@ -238,7 +253,8 @@ module CharMap =
 
             for cellX in 0u .. (dataBlock.CellWidth - 1u) do
                 let cell = dataBlock.Cells.[int cellY].[int cellX]
-                charRow.[int cellX] <- { Char = lookup cell.Dimension (blockToBitMap cell.Block)
+                let bitMap = blockToBitMap cell.Block
+                charRow.[int cellX] <- { Char = lookup cell.Dimension bitMap
                                          Color = avgBlocksColor cell.Block } //  just use the upper left color
             charMap.[int cellY] <- charRow
         stopWatch.Stop()

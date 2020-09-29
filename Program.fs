@@ -6,7 +6,9 @@ open libaafs
 let main argv =
     let dimension = 4u
     let wd = System.IO.Directory.GetCurrentDirectory()
-    let filename = wd + "/" + @"test.png"
+    let mutable filename = wd + "/" + @"test.png"
+    if argv.Length > 1 then
+        filename <- argv.[1]
     printfn "Filename: '%A'" filename
     if System.IO.File.Exists(filename) <> true then failwith "Unable to locate requested filename"
     let chArray = libaafs.CharMap.convert filename dimension
