@@ -1,6 +1,6 @@
 namespace libaafs
 
-open System
+//open System
 open System.Collections // IDictionary
 open System.Text
 open libaafs
@@ -47,6 +47,74 @@ type private CharBlock =
 
 //€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ
 module CharMap =
+    // Current implementation is based on breaking down the NxN block into quadrants of cells
+    // in which each of these sub-blocks are either all white or all black
+    // the data-structure is in format of (i.e. for a 4x4 block):
+    //        // 1|0|0|1
+    //        Data =      quad0      quad1
+    //            [| [| 1uy; 1uy; |  0uy; 0uy |]
+    //               [| 1uy; 1uy; |  0uy; 0uy |]
+    //                  ----------+----------
+    //        quad2  [| 0uy; 0uy; |  1uy; 1uy |] quad3
+    //               [| 0uy; 0uy; |  1uy; 1uy |] |]
+    // in which we'll have to convert it into quadrants
+    let bitBlockToCellQuadrants (byteBlock: byte [] []): byte [] [] =
+        if (byteBlock.Length % 2) <> 0
+        then failwith "Block dimension (width) must be divisible into half"
+        if (byteBlock.[0].Length % 2) <> 0
+        then failwith "Block dimension (height) must be divisible into half"
+        let cellDimension = byteBlock.Length / 2
+
+        let quad0 =
+            [| for y in 0 .. (cellDimension - 1) do
+                for x in 0 .. (cellDimension - 1) do
+                    byteBlock.[y].[x] |]
+
+        let quad1 =
+            [| for y in 0 .. (cellDimension - 1) do
+                for x in cellDimension .. ((2 * cellDimension) - 1) do
+                    byteBlock.[y].[x] |]
+
+        let quad2 =
+            [| for y in cellDimension .. ((2 * cellDimension) - 1) do
+                for x in 0 .. (cellDimension - 1) do
+                    byteBlock.[y].[x] |]
+
+        let quad3 =
+            [| for y in cellDimension .. ((2 * cellDimension) - 1) do
+                for x in cellDimension .. ((2 * cellDimension) - 1) do
+                    byteBlock.[y].[x] |]
+
+        [| quad0; quad1; quad2; quad3 |]
+
+    let blockToCellQuadrants (byteBlock: Pixel [] []): Pixel [] [] =
+        if (byteBlock.Length % 2) <> 0
+        then failwith "Block dimension (width) must be divisible into half"
+        if (byteBlock.[0].Length % 2) <> 0
+        then failwith "Block dimension (height) must be divisible into half"
+        let cellDimension = byteBlock.Length / 2
+
+        let quad0 =
+            [| for y in 0 .. (cellDimension - 1) do
+                for x in 0 .. (cellDimension - 1) do
+                    byteBlock.[y].[x] |]
+
+        let quad1 =
+            [| for y in 0 .. (cellDimension - 1) do
+                for x in cellDimension .. ((2 * cellDimension) - 1) do
+                    byteBlock.[y].[x] |]
+
+        let quad2 =
+            [| for y in cellDimension .. ((2 * cellDimension) - 1) do
+                for x in 0 .. (cellDimension - 1) do
+                    byteBlock.[y].[x] |]
+
+        let quad3 =
+            [| for y in cellDimension .. ((2 * cellDimension) - 1) do
+                for x in cellDimension .. ((2 * cellDimension) - 1) do
+                    byteBlock.[y].[x] |]
+
+        [| quad0; quad1; quad2; quad3 |]
 
     let private map4x4 =
         [ { WidthAndHeight = 4u
@@ -182,7 +250,7 @@ module CharMap =
             { DimensionXY = fst group
               Map =
                   snd group
-                  |> Seq.map (fun block -> (block.Data, block.Char))
+                  |> Seq.map (fun block -> (bitBlockToCellQuadrants block.Data, block.Char))
                   |> dict })
 
     let private blockMaps = map4x4
@@ -202,48 +270,9 @@ module CharMap =
             | Some v -> v
             | None -> failwith (sprintf "Unhandled byte-array key: %A" byteArray)
 
-    // Current implementation is based on breaking down the NxN block into quadrants of cells
-    // in which each of these sub-blocks are either all white or all black
-    // the data-structure is in format of (i.e. for a 4x4 block):
-    //        // 1|0|0|1
-    //        Data =      quad0      quad1
-    //            [| [| 1uy; 1uy; |  0uy; 0uy |]
-    //               [| 1uy; 1uy; |  0uy; 0uy |]
-    //                  ----------+----------
-    //        quad2  [| 0uy; 0uy; |  1uy; 1uy |] quad3
-    //               [| 0uy; 0uy; |  1uy; 1uy |] |]
-    // in which we'll have to convert it into quadrants
-    let blockToCellQuadrants (byteBlock: Pixel [] []): Pixel [] [] =
-        if (byteBlock.Length % 2) <> 0
-        then failwith "Block dimension (width) must be divisible into half"
-        if (byteBlock.[0].Length % 2) <> 0
-        then failwith "Block dimension (height) must be divisible into half"
-        let cellDimension = byteBlock.Length / 2
-
-        let quad0 =
-            [| for y in 0 .. (cellDimension - 1) do
-                for x in 0 .. (cellDimension - 1) do
-                    byteBlock.[y].[x] |]
-
-        let quad1 =
-            [| for y in 0 .. (cellDimension - 1) do
-                for x in cellDimension .. ((2 * cellDimension) - 1) do
-                    byteBlock.[y].[x] |]
-
-        let quad2 =
-            [| for y in cellDimension .. ((2 * cellDimension) - 1) do
-                for x in 0 .. (cellDimension - 1) do
-                    byteBlock.[y].[x] |]
-
-        let quad3 =
-            [| for y in cellDimension .. ((2 * cellDimension) - 1) do
-                for x in cellDimension .. ((2 * cellDimension) - 1) do
-                    byteBlock.[y].[x] |]
-
-        [| quad0; quad1; quad2; quad3 |]
 
     let quadCellsToQuadBitMap (byteBlock: Pixel [] []): byte [] [] =
-        let isBlack = 0x0Fuy
+        //let isBlack = 0x0Fuy
         // assume a block is formatted as:
         // [| quadArray0; quadArray1; quadArray2; quadArray3 |]
         [| for quadIndex in 0 .. (byteBlock.Length - 1) do
@@ -256,10 +285,10 @@ module CharMap =
 
             let bitFlag =
                 //if (byteBlock.[y].[x].Compressed &&& 0x3Fuy) > 0uy then 1uy    // ignore alpha bits
-                if avg > 2.0 then 1uy // this format is based on average of (R+G+B)/3
+                if avg > 0.50 then 1uy // this format is based on average of (R+G+B)/3
                 else 0uy
 
-            [| for x in 0 .. (byteBlock.[0].Length - 1) do
+            [| for _ in 0 .. (byteBlock.[0].Length - 1) do
                 bitFlag |] |]
 
     let avgColorFromQuadCells (blocks: Pixel [] []): Pixel =

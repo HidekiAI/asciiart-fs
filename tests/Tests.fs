@@ -92,8 +92,9 @@ type MyTests(output: ITestOutputHelper) =
         //Assert.Equal<Collections.Generic.IEnumerable<int>>(expected, actual)
         let block =
             image.toBlock (uint32 dimension) greyScale10xH
+
         let myDelegate =
-            System.Func<_> (fun () -> image.toBlock (uint32 dimension) greyScale10xH)
+            System.Func<_>(fun () -> image.toBlock (uint32 dimension) greyScale10xH)
         //Assert.Throws<System.Exception>(myDelegate.Invoke)
         block
 
@@ -322,3 +323,45 @@ type MyTests(output: ITestOutputHelper) =
         CharMap.dumpCharMap sb ColorType.HTML converted
         let strImage = sb.ToString()
         output.WriteLine(strImage)
+
+    [<Fact>]
+    let ``Tests block conversion to quadrant`` () =
+        let block =
+            [| [| 1uy; 1uy; 0uy; 0uy |]
+               [| 1uy; 1uy; 0uy; 0uy |]
+               [| 0uy; 0uy; 1uy; 1uy |]
+               [| 0uy; 0uy; 1uy; 1uy |] |]
+
+        let bitBlockToQuad =
+            CharMap.bitBlockToCellQuadrants block
+
+        let bitQuad0 = bitBlockToQuad.[0]
+        let bitQuad1 = bitBlockToQuad.[1]
+        let bitQuad2 = bitBlockToQuad.[2]
+        let bitQuad3 = bitBlockToQuad.[3]
+        Assert.True((bitQuad0 = [| 1uy; 1uy; 1uy; 1uy |]))
+        Assert.True((bitQuad1 = [| 0uy; 0uy; 0uy; 0uy |]))
+        Assert.True((bitQuad2 = [| 0uy; 0uy; 0uy; 0uy |]))
+        Assert.True((bitQuad3 = [| 1uy; 1uy; 1uy; 1uy |]))
+
+        let blockPixel =
+            block
+            |> Array.map (fun bits ->
+                bits
+                |> Array.map (fun bit ->
+                    { R = bit; G = bit; B = bit; A = bit }
+                    |> image.makePixel))
+
+        let blockToQuad = CharMap.blockToCellQuadrants blockPixel
+
+        let bitMapQuads =
+            CharMap.quadCellsToQuadBitMap blockToQuad
+
+        let quad0 = bitMapQuads.[0]
+        let quad1 = bitMapQuads.[1]
+        let quad2 = bitMapQuads.[2]
+        let quad3 = bitMapQuads.[3]
+        Assert.True((quad0 = [| 1uy; 1uy; 1uy; 1uy |]))
+        Assert.True((quad1 = [| 0uy; 0uy; 0uy; 0uy |]))
+        Assert.True((quad2 = [| 0uy; 0uy; 0uy; 0uy |]))
+        Assert.True((quad3 = [| 1uy; 1uy; 1uy; 1uy |]))
