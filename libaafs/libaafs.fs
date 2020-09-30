@@ -206,29 +206,66 @@ module CharMap =
     // in which each of these sub-blocks are either all white or all black
     // the data-structure is in format of (i.e. for a 4x4 block):
     //        // 1|0|0|1
-    //        Data =
-    //            [| [| 1uy; 1uy; 0uy; 0uy |]
-    //               [| 1uy; 1uy; 0uy; 0uy |]
-    //               [| 0uy; 0uy; 1uy; 1uy |]
-    //               [| 0uy; 0uy; 1uy; 1uy |] |]
+    //        Data =      quad0      quad1
+    //            [| [| 1uy; 1uy; |  0uy; 0uy |]
+    //               [| 1uy; 1uy; |  0uy; 0uy |]
+    //                  ----------+----------
+    //        quad2  [| 0uy; 0uy; |  1uy; 1uy |] quad3
+    //               [| 0uy; 0uy; |  1uy; 1uy |] |]
     // in which we'll have to convert it into quadrants
-    let blockToBitMap (byteBlock: Pixel [] []): byte[][] =
-        if (byteBlock.Length % 2) <> 0 then failwith "Block dimension (width) must be divisible into half"
-        if (byteBlock.[0].Length % 2) <> 0 then failwith "Block dimension (height) must be divisible into half"
+    let blockToCellQuadrants (byteBlock: Pixel [] []): Pixel [] [] =
+        if (byteBlock.Length % 2) <> 0
+        then failwith "Block dimension (width) must be divisible into half"
+        if (byteBlock.[0].Length % 2) <> 0
+        then failwith "Block dimension (height) must be divisible into half"
         let cellDimension = byteBlock.Length / 2
-        let quad0 = [| for y in 0..(cellDimension - 1) do for x in 0..(cellDimension - 1) do byteBlock.[y].[x].Compressed |]
-        let quad1 = [| for y in 0..(cellDimension - 1) do for x in 0..(cellDimension - 1) do byteBlock.[y].[x].Compressed |]
-        let quad2 = [| for y in 0..(cellDimension - 1) do for x in 0..(cellDimension - 1) do byteBlock.[y].[x].Compressed |]
-        let quad3 = [| for y in 0..(cellDimension - 1) do for x in 0..(cellDimension - 1) do byteBlock.[y].[x].Compressed |]
-        [|quad0; quad1; quad2; quad3|]
 
-    let avgBlocksColor (blocks: Pixel [] []): Pixel =
+        let quad0 =
+            [| for y in 0 .. (cellDimension - 1) do
+                for x in 0 .. (cellDimension - 1) do
+                    byteBlock.[y].[x] |]
+
+        let quad1 =
+            [| for y in 0 .. (cellDimension - 1) do
+                for x in cellDimension .. ((2 * cellDimension) - 1) do
+                    byteBlock.[y].[x] |]
+
+        let quad2 =
+            [| for y in cellDimension .. ((2 * cellDimension) - 1) do
+                for x in 0 .. (cellDimension - 1) do
+                    byteBlock.[y].[x] |]
+
+        let quad3 =
+            [| for y in cellDimension .. ((2 * cellDimension) - 1) do
+                for x in cellDimension .. ((2 * cellDimension) - 1) do
+                    byteBlock.[y].[x] |]
+
+        [| quad0; quad1; quad2; quad3 |]
+
+    let quadCellsToQuadBitMap (byteBlock: Pixel [] []): byte [] [] =
+        let isBlack = 0x3Fuy
+        // assume a block is formatted as:
+        // [| quadArray0; quadArray1; quadArray2; quadArray3 |]
+        [| for quadIndex in 0 .. (byteBlock.Length - 1) do
+            // if 2 or less are "lit", then make the quad black (all 0's)
+            let quadCell = byteBlock.[quadIndex]
+
+            let avg =
+                quadCell
+                |> Array.averageBy (fun b -> if b.Compressed > isBlack then 1.0 else 0.0)
+
+            let bitFlag =
+                //if (byteBlock.[y].[x].Compressed &&& 0x3Fuy) > 0uy then 1uy    // ignore alpha bits
+                if avg > 2.0 then 1uy // this format is based on average of (R+G+B)/3
+                else 0uy
+
+            [| for x in 0 .. (byteBlock.[0].Length - 1) do
+                bitFlag |] |]
+
+    let avgColorFromQuadCells (blocks: Pixel [] []): Pixel =
         blocks
         |> Array.fold (fun pixel blockRow ->
-            let avg =
-                blockRow
-                |> Array.fold (fun blockPixel block -> image.avgPixel blockPixel block) image.makeBlackPixel
-
+            let avg = image.avgBlockColor blockRow
             image.avgPixel avg pixel) image.makeBlackPixel
 
     /// process in parallel of 4 quadrants
@@ -253,9 +290,10 @@ module CharMap =
 
             for cellX in 0u .. (dataBlock.CellWidth - 1u) do
                 let cell = dataBlock.Cells.[int cellY].[int cellX]
-                let bitMap = blockToBitMap cell.Block
-                charRow.[int cellX] <- { Char = lookup cell.Dimension bitMap
-                                         Color = avgBlocksColor cell.Block } //  just use the upper left color
+                let quadBlock = blockToCellQuadrants cell.Block
+                let bitMapQuads = quadCellsToQuadBitMap quadBlock
+                charRow.[int cellX] <- { Char = lookup cell.Dimension bitMapQuads
+                                         Color = avgColorFromQuadCells quadBlock } //  just use the upper left color
             charMap.[int cellY] <- charRow
         stopWatch.Stop()
         printfn "%f mSec" stopWatch.Elapsed.TotalMilliseconds

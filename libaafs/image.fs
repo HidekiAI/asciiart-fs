@@ -578,42 +578,28 @@ module image =
     let RGBAToHtml rgba =
         sprintf "%02X%02X%02X" rgba.R rgba.G rgba.B
 
-    let avgPixel pixel1 pixel2 =
-        let avgRGB =
-            { R = (pixel1.Color.R + pixel2.Color.R) / 2uy
-              G = (pixel1.Color.G + pixel2.Color.G) / 2uy
-              B = (pixel1.Color.B + pixel2.Color.B) / 2uy
-              A = (pixel1.Color.A + pixel2.Color.A) / 2uy }
-
-        let htmlColor = RGBAToHtml avgRGB
-
-        { Compressed = (pixel1.Compressed + pixel2.Compressed) / 2uy
-          Color = avgRGB
-          HtmlColor = htmlColor
-          ASCIIColor = HtmlToASCIIColor htmlColor }
-
     let makePixel rgba =
         // this method just takes percentages (33%) of each color
         let fromRGBA33 (rgba: RGBA) =
             byte (((int rgba.R) + (int rgba.G) + (int rgba.B)) / 3)
             &&& 255uy
-        // divide by 16 parts, mask it with lower 2 bits, and shift to AARRGGBB bits
-        let fromRGBA2Bits (rgba: RGBA) =
-            byte
-                ((((rgba.A >>> 4) &&& 3uy) <<< 6)
-                 &&& (((rgba.R >>> 4) &&& 3uy) <<< 4)
-                 &&& (((rgba.G >>> 4) &&& 3uy) <<< 2)
-                 &&& (((rgba.B >>> 4) &&& 3uy) <<< 0))
-            &&& 255uy
-        // Similar to 2-bits RGBA, but without the alpha bits which makes it 00RRGGBB
-        let fromRGB2Bits (rgba: RGBA) =
-            byte
-                (
-                // NOTE: Some techniques bias 2 colors to be 3 bits
-                (((rgba.R >>> 4) &&& 3uy) <<< 4)
-                &&& (((rgba.G >>> 4) &&& 3uy) <<< 2)
-                &&& (((rgba.B >>> 4) &&& 3uy) <<< 0))
-            &&& 255uy
+        //// divide by 16 parts, mask it with lower 2 bits, and shift to AARRGGBB bits
+        //let fromRGBA2Bits (rgba: RGBA) =
+        //    byte
+        //        ((((rgba.A >>> 4) &&& 3uy) <<< 6)
+        //         &&& (((rgba.R >>> 4) &&& 3uy) <<< 4)
+        //         &&& (((rgba.G >>> 4) &&& 3uy) <<< 2)
+        //         &&& (((rgba.B >>> 4) &&& 3uy) <<< 0))
+        //    &&& 255uy
+        //// Similar to 2-bits RGBA, but without the alpha bits which makes it 00RRGGBB
+        //let fromRGB2Bits (rgba: RGBA) =
+        //    byte
+        //        (
+        //        // NOTE: Some techniques bias 2 colors to be 3 bits
+        //        (((rgba.R >>> 4) &&& 3uy) <<< 4)
+        //        &&& (((rgba.G >>> 4) &&& 3uy) <<< 2)
+        //        &&& (((rgba.B >>> 4) &&& 3uy) <<< 0))
+        //    &&& 255uy
 
         { Compressed = fromRGBA33 rgba
           Color = rgba
@@ -622,6 +608,34 @@ module image =
 
     let makeBlackPixel =
         makePixel { R = 0uy; G = 0uy; B = 0uy; A = 0uy }
+
+    let avgBlockColor (block: Pixel []) =
+       let rgbaAvg =
+            {| R =
+                   block
+                   |> Array.averageBy (fun pixel -> float pixel.Color.R)
+               G =
+                   block
+                   |> Array.averageBy (fun pixel -> float pixel.Color.G)
+               B =
+                   block
+                   |> Array.averageBy (fun pixel -> float pixel.Color.B)
+               A =
+                   block
+                   |> Array.averageBy (fun pixel -> float pixel.Color.A) |}
+
+       makePixel { R = byte rgbaAvg.R
+                   G = byte rgbaAvg.G
+                   B = byte rgbaAvg.B
+                   A = byte rgbaAvg.A }
+
+    let avgPixel pixel1 pixel2 =
+        let avgRGB =
+            { R = (pixel1.Color.R + pixel2.Color.R) / 2uy
+              G = (pixel1.Color.G + pixel2.Color.G) / 2uy
+              B = (pixel1.Color.B + pixel2.Color.B) / 2uy
+              A = (pixel1.Color.A + pixel2.Color.A) / 2uy }
+        makePixel avgRGB
 
     // there are no check to determine if filename has extension '.png', nor does it check (after reading) if it is Bitmap.Png type
     // WARNING: Unsure if it's a bug or by design, but when reading (at least PNG) image, the width (stride) is +1 extra pixel
@@ -874,7 +888,7 @@ module image =
 #if DEBUG
                               match box vector.[int iVector] with
                               | null -> failwith "Programmer error, invalid coordinates"
-                              | v -> vector.[int iVector]
+                              | _ -> vector.[int iVector]
 #else
                               vector.[int iVector]
 
