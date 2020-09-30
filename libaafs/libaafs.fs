@@ -380,7 +380,7 @@ module CharMap =
                     |> Array.reduce (+))
 
         if colorType = ColorType.HTML then
-            sb.AppendLine(@"<!DOCTYPE html><html><body bgcolor=""#000000""><pre>")
+            sb.AppendLine(@"<!DOCTYPE html><html><body style=""font-family:courier;color:white;background-color:black""><pre>")
             |> ignore
         pl l
         for i in 0 .. (lines.Length - 1) do

@@ -4,6 +4,7 @@ open libaafs
 
 [<EntryPoint>]
 let main argv =
+    printfn "<!--"
     let dimension = 4u
     let wd = System.IO.Directory.GetCurrentDirectory()
     let mutable filename = wd + "/" + @"test.png"
@@ -12,6 +13,8 @@ let main argv =
     printfn "Filename: '%A'" filename
     if System.IO.File.Exists(filename) <> true then failwith "Unable to locate requested filename"
     let chArray = libaafs.CharMap.convert filename dimension
+    printfn "-->"
+
     let sb = new StringBuilder()
     CharMap.dumpCharMap sb ColorType.HTML chArray
     printfn "%A" sb
