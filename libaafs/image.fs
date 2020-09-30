@@ -608,6 +608,8 @@ module image =
 
     let makeBlackPixel =
         makePixel { R = 0uy; G = 0uy; B = 0uy; A = 0uy }
+    let makeWhitePixel =
+        makePixel { R = 0xFFuy; G = 0xFFuy; B = 0xFFuy; A = 0x80uy }
 
     let avgBlockColor (block: Pixel []) =
        let rgbaAvg =
@@ -624,17 +626,21 @@ module image =
                    block
                    |> Array.averageBy (fun pixel -> float pixel.Color.A) |}
 
-       makePixel { R = byte rgbaAvg.R
-                   G = byte rgbaAvg.G
-                   B = byte rgbaAvg.B
-                   A = byte rgbaAvg.A }
+       let toByte (f:float) =
+          byte ((uint32 f) &&& 0x00FFu)
+       makePixel { R = toByte rgbaAvg.R
+                   G = toByte rgbaAvg.G
+                   B = toByte rgbaAvg.B
+                   A = toByte rgbaAvg.A}
 
     let avgPixel pixel1 pixel2 =
+        let toByte (f:float) =
+          byte ((uint32 f) &&& 0x00FFu)
         let avgRGB =
-            { R = (pixel1.Color.R + pixel2.Color.R) / 2uy
-              G = (pixel1.Color.G + pixel2.Color.G) / 2uy
-              B = (pixel1.Color.B + pixel2.Color.B) / 2uy
-              A = (pixel1.Color.A + pixel2.Color.A) / 2uy }
+            { R = toByte ((float pixel1.Color.R + float pixel2.Color.R) / 2.0)
+              G = toByte ((float pixel1.Color.G + float pixel2.Color.G) / 2.0)
+              B = toByte ((float pixel1.Color.B + float pixel2.Color.B) / 2.0)
+              A = toByte ((float pixel1.Color.A + float pixel2.Color.A) / 2.0) }
         makePixel avgRGB
 
     // there are no check to determine if filename has extension '.png', nor does it check (after reading) if it is Bitmap.Png type

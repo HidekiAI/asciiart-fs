@@ -243,7 +243,7 @@ module CharMap =
         [| quad0; quad1; quad2; quad3 |]
 
     let quadCellsToQuadBitMap (byteBlock: Pixel [] []): byte [] [] =
-        let isBlack = 0x3Fuy
+        let isBlack = 0x0Fuy
         // assume a block is formatted as:
         // [| quadArray0; quadArray1; quadArray2; quadArray3 |]
         [| for quadIndex in 0 .. (byteBlock.Length - 1) do
@@ -252,7 +252,7 @@ module CharMap =
 
             let avg =
                 quadCell
-                |> Array.averageBy (fun b -> if b.Compressed > isBlack then 1.0 else 0.0)
+                |> Array.averageBy (fun b -> if b.Compressed > 0uy then 1.0 else 0.0)
 
             let bitFlag =
                 //if (byteBlock.[y].[x].Compressed &&& 0x3Fuy) > 0uy then 1uy    // ignore alpha bits
@@ -263,10 +263,12 @@ module CharMap =
                 bitFlag |] |]
 
     let avgColorFromQuadCells (blocks: Pixel [] []): Pixel =
+        // assume a block is formatted as:
+        // [| quadArray0; quadArray1; quadArray2; quadArray3 |]
         blocks
         |> Array.fold (fun pixel blockRow ->
             let avg = image.avgBlockColor blockRow
-            image.avgPixel avg pixel) image.makeBlackPixel
+            image.avgPixel avg pixel) image.makeWhitePixel
 
     /// process in parallel of 4 quadrants
     let convertToBlocks (dataBlock: CellImage): CharPixel [] [] =
