@@ -1,6 +1,5 @@
 
 # libAA-FS (ASCII Art F#)
-F# training, 2nd self-interested project to learn F#; library to convert PNG (and other images) to ASCII art
 
 ## Summary:
 * project that can be written quick yet "fun" for learning F#
@@ -14,11 +13,14 @@ F# training, 2nd self-interested project to learn F#; library to convert PNG (an
 * Parse arg for in-file and out-file
 * optimize
 * get ANSI-color working
-* 
 
 ## Running and Tests
 * dotnet test
 * run.sh provided for debug runs
 
-
 ![Screenshot](Screenshot.png)
+
+## Things I'd like to try:
+* Use Convolution to determine the 4x4 and 8x8 blocks
+* Use imagemagik or some existing "good" libraries that already can convert images to ASCII and make a pool of mapping of converted data, and have tensorflow learn what other libraries have used for 4x4 or 8x8 block to an ASCII char; use that as the block char lookup
+* Loop an image to generate ASCII art, have tensorflow compare, and then guess on a new ASCII lookup map, generate again, and so on, until a good ASCII lookup map can be generated
